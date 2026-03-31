@@ -19,26 +19,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git cmake ninja-build zip
 
-      # 🔹 SDL2 BASE
+      # 🔥 CLONAR TODO CON SUBMODULES (FIX CLAVE)
       - name: Clone SDL2
         run: |
-          git clone https://github.com/libsdl-org/SDL.git SDL
+          git clone --recursive https://github.com/libsdl-org/SDL.git SDL
           cd SDL && git checkout SDL2
 
       - name: Clone SDL_image
         run: |
-          git clone https://github.com/libsdl-org/SDL_image.git
+          git clone --recursive https://github.com/libsdl-org/SDL_image.git
           cd SDL_image && git checkout SDL2
+          git submodule update --init --recursive
 
       - name: Clone SDL_mixer
         run: |
-          git clone https://github.com/libsdl-org/SDL_mixer.git
+          git clone --recursive https://github.com/libsdl-org/SDL_mixer.git
           cd SDL_mixer && git checkout SDL2
+          git submodule update --init --recursive
 
       - name: Clone SDL_ttf
         run: |
-          git clone https://github.com/libsdl-org/SDL_ttf.git
+          git clone --recursive https://github.com/libsdl-org/SDL_ttf.git
           cd SDL_ttf && git checkout SDL2
+          git submodule update --init --recursive
 
       - name: Setup Android SDK + NDK
         uses: android-actions/setup-android@v3
@@ -53,7 +56,7 @@ jobs:
 
           mkdir -p output/$ABI
 
-          # 🔥 1. BUILD + INSTALL SDL2 (EL FIX REAL)
+          # 🔥 1. SDL2 (BUILD + INSTALL)
           mkdir -p build-SDL-$ABI
           cd build-SDL-$ABI
 
@@ -70,10 +73,9 @@ jobs:
           cmake --install .
 
           cp install/lib/*.so ../output/$ABI/ 2>/dev/null || true
-
           cd ..
 
-          # 🔧 función para libs dependientes
+          # 🔧 función común
           build () {
             NAME=$1
             SRC=$2
@@ -97,10 +99,32 @@ jobs:
             cd ..
           }
 
-          # 🔥 2. LIBS QUE DEPENDEN DE SDL2
-          build SDL_image SDL_image "-DSDL2IMAGE_VENDORED=ON"
+          # 🔥 2. LIBS (SIN FORMATOS PROBLEMÁTICOS)
+          build SDL_image SDL_image "-DSDL2IMAGE_VENDORED=ON -DSDL2IMAGE_AVIF=OFF"
           build SDL_mixer SDL_mixer "-DSDL2MIXER_VENDORED=ON"
           build SDL_ttf SDL_ttf "-DSDL2TTF_VENDORED=ON"
 
       - name: Upload per ABI
         uses: actions/upload-artifact@v4
+        with:
+          name: SDL2-${{ matrix.abi }}
+          path: output/${{ matrix.abi }}
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create ZIP
+        run: |
+          mkdir final
+          cp -r SDL2-*/* final/ || true
+          zip -r SDL2-FULL-ANDROID.zip final
+
+      - name: Upload FINAL ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDL2-FULL
+          path: SDL2-FULL-ANDROID.zip
