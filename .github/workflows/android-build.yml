@@ -1,9 +1,9 @@
-name: Mangos Engine Forge
+name: Mangos SDL2 Full Pack
 
 on: [push]
 
 jobs:
-  forge-sdl2:
+  build:
     runs-on: ubuntu-latest
 
     strategy:
@@ -11,19 +11,27 @@ jobs:
         abi: [arm64-v8a, armeabi-v7a]
 
     steps:
-      - name: Checkout Mangos Repo
-        uses: actions/checkout@v4
-
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git cmake ninja-build
+          sudo apt-get install -y git cmake ninja-build zip
 
+      # 🔹 SDL2 base
       - name: Clone SDL2
         run: |
-          git clone https://github.com/libsdl-org/SDL.git SDL_Source
-          cd SDL_Source
+          git clone https://github.com/libsdl-org/SDL.git SDL
+          cd SDL
           git checkout SDL2
+
+      # 🔹 Extensiones
+      - name: Clone SDL_image
+        run: git clone https://github.com/libsdl-org/SDL_image.git
+
+      - name: Clone SDL_mixer
+        run: git clone https://github.com/libsdl-org/SDL_mixer.git
+
+      - name: Clone SDL_ttf
+        run: git clone https://github.com/libsdl-org/SDL_ttf.git
 
       - name: Setup Android SDK + NDK
         uses: android-actions/setup-android@v3
@@ -31,25 +39,64 @@ jobs:
       - name: Install NDK
         run: sdkmanager "ndk;25.2.9519653"
 
-      - name: Build SDL2 (${{ matrix.abi }})
+      - name: Build ALL SDL libs (${{ matrix.abi }})
         run: |
           export ANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
+          export ABI=${{ matrix.abi }}
 
-          mkdir -p build-${{ matrix.abi }}
-          cd build-${{ matrix.abi }}
+          mkdir -p output/$ABI
 
-          cmake ../SDL_Source \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=${{ matrix.abi }} \
-            -DANDROID_PLATFORM=21 \
-            -DSDL_SHARED=ON \
-            -DSDL_STATIC=OFF \
-            -DSDL_TEST=OFF
+          build_lib () {
+            NAME=$1
+            SRC=$2
 
-          cmake --build .
+            mkdir -p build-$NAME-$ABI
+            cd build-$NAME-$ABI
 
-      - name: Upload .so (${{ matrix.abi }})
+            cmake ../$SRC \
+              -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+              -DANDROID_ABI=$ABI \
+              -DANDROID_PLATFORM=21 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DSDL2_DIR=$PWD/../build-SDL-$ABI \
+              -DSDL_SHARED=ON \
+              -DSDL_STATIC=OFF
+
+            cmake --build .
+
+            cp *.so ../output/$ABI/ || true
+            cd ..
+          }
+
+          # Orden importa
+          build_lib SDL SDL
+          build_lib SDL_image SDL_image
+          build_lib SDL_mixer SDL_mixer
+          build_lib SDL_ttf SDL_ttf
+
+      - name: Upload per-ABI
         uses: actions/upload-artifact@v4
         with:
           name: SDL2-${{ matrix.abi }}
-          path: build-${{ matrix.abi }}/libSDL2*.so
+          path: output/${{ matrix.abi }}
+
+  # 🔥 Job final que junta TODO en un ZIP
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create ZIP
+        run: |
+          mkdir final
+          cp -r SDL2-*/* final/ || true
+          zip -r SDL2-FULL-ANDROID.zip final
+
+      - name: Upload FINAL ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDL2-FULL
+          path: SDL2-FULL-ANDROID.zip
