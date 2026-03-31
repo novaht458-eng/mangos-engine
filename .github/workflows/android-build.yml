@@ -19,12 +19,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git cmake ninja-build zip
 
+      # 🔹 Clonar SDL2
       - name: Clone SDL2
         run: |
           git clone --recursive https://github.com/libsdl-org/SDL.git SDL
           cd SDL
           git checkout SDL2
 
+      # 🔹 SDL_image
       - name: Clone SDL_image
         run: |
           git clone --recursive https://github.com/libsdl-org/SDL_image.git SDL_image
@@ -32,6 +34,7 @@ jobs:
           git checkout SDL2
           git submodule update --init --recursive
 
+      # 🔹 SDL_mixer
       - name: Clone SDL_mixer
         run: |
           git clone --recursive https://github.com/libsdl-org/SDL_mixer.git SDL_mixer
@@ -39,6 +42,7 @@ jobs:
           git checkout SDL2
           git submodule update --init --recursive
 
+      # 🔹 SDL_ttf
       - name: Clone SDL_ttf
         run: |
           git clone --recursive https://github.com/libsdl-org/SDL_ttf.git SDL_ttf
@@ -46,12 +50,14 @@ jobs:
           git checkout SDL2
           git submodule update --init --recursive
 
+      # 🔹 Android
       - name: Setup Android SDK + NDK
         uses: android-actions/setup-android@v3
 
       - name: Install NDK
         run: sdkmanager "ndk;25.2.9519653"
 
+      # 🔥 BUILD
       - name: Build ALL (${{ matrix.abi }})
         run: |
           export ANDROID_NDK="$ANDROID_HOME/ndk/25.2.9519653"
@@ -59,7 +65,9 @@ jobs:
 
           mkdir -p "output/$ABI"
 
-          # 1) SDL2
+          # =========================
+          # 🔥 SDL2 (BASE)
+          # =========================
           mkdir -p "build-SDL-$ABI"
           cd "build-SDL-$ABI"
 
@@ -73,10 +81,13 @@ jobs:
             -DSDL_STATIC=OFF
 
           cmake --build . --target install
+
           cp install/lib/*.so "../output/$ABI/" 2>/dev/null || true
           cd ..
 
-          # Función para librerías dependientes
+          # =========================
+          # 🔧 FUNCIÓN PARA LIBS
+          # =========================
           build_lib () {
             NAME=$1
             SRC=$2
@@ -95,14 +106,16 @@ jobs:
               -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
               $EXTRA
 
-            # IMPORTANTE: compilar solo la librería, no examples/tests
+            # 🔥 SOLO LIB (evita glfont y ejemplos)
             cmake --build . --target "$TARGET" || exit 1
 
             cp *.so "../output/$ABI/" 2>/dev/null || true
             cd ..
           }
 
-          # 2) SDL_image / SDL_mixer / SDL_ttf
+          # =========================
+          # 🔥 LIBS SDL2
+          # =========================
           build_lib SDL_image SDL_image SDL2_image "-DSDL2IMAGE_VENDORED=ON -DSDL2IMAGE_AVIF=OFF"
           build_lib SDL_mixer SDL_mixer SDL2_mixer "-DSDL2MIXER_VENDORED=ON"
           build_lib SDL_ttf SDL_ttf SDL2_ttf "-DSDL2TTF_VENDORED=ON"
@@ -113,6 +126,9 @@ jobs:
           name: SDL2-${{ matrix.abi }}
           path: output/${{ matrix.abi }}
 
+  # =========================
+  # 📦 PACKAGE FINAL MULTI-ABI
+  # =========================
   package:
     needs: build
     runs-on: ubuntu-latest
@@ -120,10 +136,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
 
-      - name: Create ZIP
+      - name: Create multi-ABI ZIP
         run: |
-          mkdir -p final
-          cp -r SDL2-*/* final/ || true
+          mkdir -p final/arm64-v8a
+          mkdir -p final/armeabi-v7a
+
+          cp -r SDL2-arm64-v8a/* final/arm64-v8a/ || true
+          cp -r SDL2-armeabi-v7a/* final/armeabi-v7a/ || true
+
           zip -r SDL2-FULL-ANDROID.zip final
 
       - name: Upload FINAL ZIP
