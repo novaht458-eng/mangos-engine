@@ -16,14 +16,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git cmake ninja-build zip
 
-      # 🔹 SDL2 base
       - name: Clone SDL2
         run: |
           git clone https://github.com/libsdl-org/SDL.git SDL
-          cd SDL
-          git checkout SDL2
+          cd SDL && git checkout SDL2
 
-      # 🔹 Extensiones
       - name: Clone SDL_image
         run: git clone https://github.com/libsdl-org/SDL_image.git
 
@@ -39,16 +36,17 @@ jobs:
       - name: Install NDK
         run: sdkmanager "ndk;25.2.9519653"
 
-      - name: Build ALL SDL libs (${{ matrix.abi }})
+      - name: Build ALL (${{ matrix.abi }})
         run: |
           export ANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
-          export ABI=${{ matrix.abi }}
+          ABI=${{ matrix.abi }}
 
           mkdir -p output/$ABI
 
-          build_lib () {
+          build () {
             NAME=$1
             SRC=$2
+            EXTRA=$3
 
             mkdir -p build-$NAME-$ABI
             cd build-$NAME-$ABI
@@ -60,34 +58,39 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release \
               -DSDL2_DIR=$PWD/../build-SDL-$ABI \
               -DSDL_SHARED=ON \
-              -DSDL_STATIC=OFF
+              -DSDL_STATIC=OFF \
+              $EXTRA
 
-            cmake --build .
+            cmake --build . || exit 1
 
-            cp *.so ../output/$ABI/ || true
+            cp *.so ../output/$ABI/ 2>/dev/null || true
             cd ..
           }
 
-          # Orden importa
-          build_lib SDL SDL
-          build_lib SDL_image SDL_image
-          build_lib SDL_mixer SDL_mixer
-          build_lib SDL_ttf SDL_ttf
+          # SDL base
+          build SDL SDL ""
 
-      - name: Upload per-ABI
+          # SDL_image (sin dependencias externas)
+          build SDL_image SDL_image "-DSDL2IMAGE_PNG=OFF -DSDL2IMAGE_JPG=OFF -DSDL2IMAGE_WEBP=OFF"
+
+          # SDL_mixer (mínimo estable)
+          build SDL_mixer SDL_mixer "-DSDL2MIXER_OGG=OFF -DSDL2MIXER_MP3=OFF"
+
+          # SDL_ttf (usa freetype interno)
+          build SDL_ttf SDL_ttf "-DSDL2TTF_VENDORED=ON"
+
+      - name: Upload per ABI
         uses: actions/upload-artifact@v4
         with:
           name: SDL2-${{ matrix.abi }}
           path: output/${{ matrix.abi }}
 
-  # 🔥 Job final que junta TODO en un ZIP
   package:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
 
       - name: Create ZIP
         run: |
@@ -95,7 +98,7 @@ jobs:
           cp -r SDL2-*/* final/ || true
           zip -r SDL2-FULL-ANDROID.zip final
 
-      - name: Upload FINAL ZIP
+      - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
           name: SDL2-FULL
