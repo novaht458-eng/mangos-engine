@@ -10,12 +10,16 @@ jobs:
       - name: Checkout Mangos Repo
         uses: actions/checkout@v4
 
-      - name: Checkout SDL2 Source (FIXED)
-        uses: actions/checkout@v4
-        with:
-          repository: libsdl-org/SDL2
-          path: SDL_Source
-          fetch-depth: 1
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git cmake ninja-build
+
+      - name: Clone SDL2 (FIX REAL)
+        run: |
+          git clone https://github.com/libsdl-org/SDL.git SDL_Source
+          cd SDL_Source
+          git checkout SDL2
 
       - name: Setup Android SDK + NDK
         uses: android-actions/setup-android@v3
@@ -23,7 +27,7 @@ jobs:
       - name: Install NDK
         run: sdkmanager "ndk;25.2.9519653"
 
-      - name: Build SDL2 for Android (arm64)
+      - name: Build SDL2
         run: |
           export ANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
 
@@ -40,8 +44,8 @@ jobs:
 
           cmake --build .
 
-      - name: Upload SDL2 .so
+      - name: Upload .so
         uses: actions/upload-artifact@v4
         with:
-          name: SDL2-android-arm64
+          name: SDL2-android
           path: SDL_Source/build/libSDL2*.so
