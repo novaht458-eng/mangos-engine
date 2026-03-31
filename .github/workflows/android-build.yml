@@ -19,28 +19,31 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git cmake ninja-build zip
 
-      # 🔥 CLONAR TODO CON SUBMODULES (FIX CLAVE)
       - name: Clone SDL2
         run: |
           git clone --recursive https://github.com/libsdl-org/SDL.git SDL
-          cd SDL && git checkout SDL2
+          cd SDL
+          git checkout SDL2
 
       - name: Clone SDL_image
         run: |
-          git clone --recursive https://github.com/libsdl-org/SDL_image.git
-          cd SDL_image && git checkout SDL2
+          git clone --recursive https://github.com/libsdl-org/SDL_image.git SDL_image
+          cd SDL_image
+          git checkout SDL2
           git submodule update --init --recursive
 
       - name: Clone SDL_mixer
         run: |
-          git clone --recursive https://github.com/libsdl-org/SDL_mixer.git
-          cd SDL_mixer && git checkout SDL2
+          git clone --recursive https://github.com/libsdl-org/SDL_mixer.git SDL_mixer
+          cd SDL_mixer
+          git checkout SDL2
           git submodule update --init --recursive
 
       - name: Clone SDL_ttf
         run: |
-          git clone --recursive https://github.com/libsdl-org/SDL_ttf.git
-          cd SDL_ttf && git checkout SDL2
+          git clone --recursive https://github.com/libsdl-org/SDL_ttf.git SDL_ttf
+          cd SDL_ttf
+          git checkout SDL2
           git submodule update --init --recursive
 
       - name: Setup Android SDK + NDK
@@ -51,58 +54,58 @@ jobs:
 
       - name: Build ALL (${{ matrix.abi }})
         run: |
-          export ANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
-          ABI=${{ matrix.abi }}
+          export ANDROID_NDK="$ANDROID_HOME/ndk/25.2.9519653"
+          ABI="${{ matrix.abi }}"
 
-          mkdir -p output/$ABI
+          mkdir -p "output/$ABI"
 
-          # 🔥 1. SDL2 (BUILD + INSTALL)
-          mkdir -p build-SDL-$ABI
-          cd build-SDL-$ABI
+          # 1) SDL2
+          mkdir -p "build-SDL-$ABI"
+          cd "build-SDL-$ABI"
 
           cmake ../SDL \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=$ABI \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" \
             -DANDROID_PLATFORM=21 \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DCMAKE_INSTALL_PREFIX="$PWD/install" \
             -DSDL_SHARED=ON \
             -DSDL_STATIC=OFF
 
-          cmake --build .
-          cmake --install .
-
-          cp install/lib/*.so ../output/$ABI/ 2>/dev/null || true
+          cmake --build . --target install
+          cp install/lib/*.so "../output/$ABI/" 2>/dev/null || true
           cd ..
 
-          # 🔧 función común
-          build () {
+          # Función para librerías dependientes
+          build_lib () {
             NAME=$1
             SRC=$2
-            EXTRA=$3
+            TARGET=$3
+            EXTRA=$4
 
-            mkdir -p build-$NAME-$ABI
-            cd build-$NAME-$ABI
+            mkdir -p "build-$NAME-$ABI"
+            cd "build-$NAME-$ABI"
 
             cmake ../$SRC \
-              -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
-              -DANDROID_ABI=$ABI \
+              -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI="$ABI" \
               -DANDROID_PLATFORM=21 \
               -DCMAKE_BUILD_TYPE=Release \
-              -DSDL2_DIR=$PWD/../build-SDL-$ABI/install/lib/cmake/SDL2 \
+              -DSDL2_DIR="$PWD/../build-SDL-$ABI/install/lib/cmake/SDL2" \
               -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
               $EXTRA
 
-            cmake --build . || exit 1
+            # IMPORTANTE: compilar solo la librería, no examples/tests
+            cmake --build . --target "$TARGET" || exit 1
 
-            cp *.so ../output/$ABI/ 2>/dev/null || true
+            cp *.so "../output/$ABI/" 2>/dev/null || true
             cd ..
           }
 
-          # 🔥 2. LIBS (SIN FORMATOS PROBLEMÁTICOS)
-          build SDL_image SDL_image "-DSDL2IMAGE_VENDORED=ON -DSDL2IMAGE_AVIF=OFF"
-          build SDL_mixer SDL_mixer "-DSDL2MIXER_VENDORED=ON"
-          build SDL_ttf SDL_ttf "-DSDL2TTF_VENDORED=ON"
+          # 2) SDL_image / SDL_mixer / SDL_ttf
+          build_lib SDL_image SDL_image SDL2_image "-DSDL2IMAGE_VENDORED=ON -DSDL2IMAGE_AVIF=OFF"
+          build_lib SDL_mixer SDL_mixer SDL2_mixer "-DSDL2MIXER_VENDORED=ON"
+          build_lib SDL_ttf SDL_ttf SDL2_ttf "-DSDL2TTF_VENDORED=ON"
 
       - name: Upload per ABI
         uses: actions/upload-artifact@v4
@@ -119,7 +122,7 @@ jobs:
 
       - name: Create ZIP
         run: |
-          mkdir final
+          mkdir -p final
           cp -r SDL2-*/* final/ || true
           zip -r SDL2-FULL-ANDROID.zip final
 
